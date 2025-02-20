@@ -12,64 +12,50 @@ export class OllamaClient {
   }
 
   private parseReview(text: string): ReviewResult {
-    const sections = text.split(/\n(?=SUMMARY|ISSUES)/);
+    // Remove thinking tags and their content
+    text = text.replace(/<think>[\s\S]*?<\/think>/g, '');
+
     let summary = '';
     const suggestions: ReviewResult['suggestions'] = [];
 
-    for (const section of sections) {
-      const trimmed = section.trim();
-      
-      if (trimmed.startsWith('SUMMARY')) {
-        summary = trimmed.replace('SUMMARY', '').trim();
-      } 
-      else if (trimmed.startsWith('ISSUES')) {
-        const issues = trimmed.replace('ISSUES', '').trim().split('\n\n');
+    // Find content between SUMMARY and ISSUES or end of text
+    const summaryMatch = text.match(/SUMMARY\s*([\s\S]*?)(?=ISSUES|---|\n\s*$)/);
+    if (summaryMatch) {
+      summary = summaryMatch[1].trim();
+    }
+
+    // Find content between ISSUES and --- or end of text
+    const issuesMatch = text.match(/ISSUES\s*([\s\S]*?)(?=---|done!|$)/);
+    if (issuesMatch) {
+      const issuesText = issuesMatch[1];
+      // Split on lettered markers followed by [
+      const issues = issuesText.split(/\n(?=[a-z]\)|\[)/);
+
+      for (const issue of issues) {
+        // Remove the letter marker if present
+        const cleanIssue = issue.replace(/^[a-z]\)\s*/, '').trim();
+        if (!cleanIssue) continue;
+
+        const fileLineMatch = cleanIssue.match(/\[([^:]+):(\d+|[a-zA-Z]+[^\]]*)\]/);
+        if (!fileLineMatch) continue;
+
+        const [, file, lineOrFunc] = fileLineMatch;
+        const parts = cleanIssue.split(/\n(?:Impact:|Fix:)/g).map(p => p.trim());
         
-        for (const issue of issues) {
-          if (!issue.trim()) continue;
+        if (parts.length >= 3) {
+          const description = parts[0].replace(/\[[^\]]+\]/, '').trim();
+          const impact = parts[1];
+          const fix = parts[2];
 
-          const fileLineMatch = issue.match(/\[([^\]]+):(\d+)\]/);
-          
-          if (fileLineMatch) {
-            const [, file, line] = fileLineMatch;
-            const lines = issue.split('\n');
-            
-            const description = lines[0].replace(/\[([^\]]+):(\d+)\]/, '').trim();
-            
-            let impact = '';
-            let fix = '';
-            let currentSection = '';
-            
-            for (let i = 1; i < lines.length; i++) {
-              const line = lines[i].trim();
-              if (line.startsWith('Impact:')) {
-                currentSection = 'impact';
-                continue;
-              } else if (line.startsWith('Fix:')) {
-                currentSection = 'fix';
-                continue;
-              }
-              
-              if (currentSection === 'impact') {
-                impact += line + ' ';
-              } else if (currentSection === 'fix') {
-                fix += line + '\n';
-              }
-            }
-
-            const message = `${description}\n\nImpact: ${impact.trim()}\n\nFix:\n${fix.trim()}`;
-            
-            suggestions.push({
-              file,
-              line: parseInt(line, 10),
-              message,
-              severity: 
-                description.toLowerCase().includes('error') || 
-                description.toLowerCase().includes('critical') || 
-                description.toLowerCase().includes('vulnerability') ? 'error' :
-                description.toLowerCase().includes('warning') ? 'warning' : 'info'
-            });
-          }
+          suggestions.push({
+            file,
+            line: /^\d+$/.test(lineOrFunc) ? parseInt(lineOrFunc, 10) : 1,
+            message: `${description}\n\nImpact: ${impact}\n\nFix:\n${fix}`,
+            severity: 
+              description.toLowerCase().includes('error') || 
+              description.toLowerCase().includes('critical') ? 'error' :
+              description.toLowerCase().includes('warning') ? 'warning' : 'info'
+          });
         }
       }
     }
@@ -95,6 +81,7 @@ export class OllamaClient {
       }
 
       const data = await response.json() as {response: string};
+      console.log(chalk.green(data.response));
       return this.parseReview(data.response);
     } catch (error) {
       console.error(chalk.red('Error generating review:'), error);

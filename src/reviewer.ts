@@ -18,35 +18,31 @@ export class CodeReviewer {
     diff: string,
     config: ReturnType<ConfigLoader["load"]>
   ): string {
-    let prompt = `You are performing a code review of the following changes. Focus on concrete, actionable feedback in these key areas:
+    let prompt = `You are performing a code review of the following changes. For each issue, use EXACTLY this format:
 
-      1. Code Issues:
-        - Unused variables, imports, or dead code
-        - Missing error handling
-        - Improper logging practices
-        - Performance concerns
-        - Security vulnerabilities
-        - TypeScript/JavaScript best practices
-
-      2. For each issue found:
-        - Identify the specific file and line
-        - Explain why it's a concern
-        - Provide a code example showing how to fix it
-
-      3. Format your response exactly like this:
-
+    Output Format:
       SUMMARY
-      Brief overview of the changes and their impact
+      (A single paragraph summarizing the changes)
 
       ISSUES
-      [file.ts:line] Issue description
-      Impact: Why this is important
-      Fix: Code example or specific steps to resolve
+      a) [filename:line] Brief issue title
+      Impact: Explain why this is important (1-2 sentences)
+      Fix: Specific code example or steps to resolve
 
-      Keep the review focused and specific to the actual code changes shown in the diff. 
-      Be concise and to the point.
-      Be pessimistic but fair, only evaluate the code that is there, don't make assumptions.
-`;
+      Rules:
+      - Each issue MUST start with [filename:line]
+      - Always include both Impact and Fix sections
+      - Be specific and actionable
+      - Focus on:
+        • Bugs and errors
+        • Security issues
+        • Performance problems
+        • Code quality concerns
+        • Missing error handling
+        • TypeScript/JavaScript best practices
+    ---
+      If no issues found, still provide SUMMARY but skip ISSUES section.
+      `;
 
     if (config.standards) {
       prompt += `\nProject Standards:\n${config.standards}\n`;
